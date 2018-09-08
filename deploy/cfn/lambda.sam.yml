@@ -1,0 +1,66 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  GuideAPIKey:
+    Type: String
+
+  RollbarToken:
+    Type: String
+
+  SlackSigningSecret:
+    Type: String
+
+  DomainName:
+    Type: String
+
+  CertificateARN:
+    Type: String
+
+  HostedZoneName:
+    Type: String
+
+Resources:
+  Fn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: go1.x
+      Handler: slash
+      CodeUri: ../../tmp/slash.zip
+      Timeout: 10
+      Environment:
+        Variables:
+          APP_GUIDE_API_KEY: !Ref GuideAPIKey
+          APP_ROLLBAR_TOKEN: !Ref RollbarToken
+          APP_SLACK_SIGNING_SECRET: !Ref SlackSigningSecret
+      Events:
+        Post:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
+
+  APIDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      CertificateArn: !Ref CertificateARN
+      DomainName: !Ref DomainName
+
+  APIBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      DomainName: !Ref APIDomainName
+      RestApiId: !Ref ServerlessRestApi
+      Stage: Prod
+
+  APIDomain:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: !Ref HostedZoneName
+      RecordSets:
+        - Name: !Ref DomainName
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt APIDomainName.DistributionDomainName
+            HostedZoneId: Z2FDTNDATAQYW2
