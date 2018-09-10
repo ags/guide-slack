@@ -15,7 +15,7 @@ type Client struct {
 
 func NewClient(apiKey string) *Client {
 	return &Client{apiKey, &http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: 2500 * time.Millisecond,
 	}}
 }
 
