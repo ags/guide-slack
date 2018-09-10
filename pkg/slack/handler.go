@@ -25,12 +25,12 @@ func (h *Handler) Handle(ctx context.Context, r events.APIGatewayProxyRequest) (
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized}, nil
 	}
 
-	req, err := decodeCommand(r)
+	cmd, err := decodeCommand(r)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
 
-	res, err := h.svc.Execute(ctx, req)
+	res, err := h.svc.Execute(ctx, cmd)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, err
 	}
