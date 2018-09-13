@@ -107,7 +107,7 @@ func (s *service) sample(ctx context.Context, c Command) (Response, error) {
 
 	if len(res.Destinations) == 0 {
 		return Response{
-			ResponseType: "in_channel",
+			ResponseType: "ephemeral",
 			Text:         fmt.Sprintf("Sorry, could't find anything for '%s' :disappointed:", c.Text),
 		}, nil
 	}
