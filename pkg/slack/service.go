@@ -51,6 +51,10 @@ type service struct {
 	client *guide.Client
 }
 
+const (
+	ResponseTypeEphemeral = "ephemeral"
+)
+
 var (
 	responseNoCommand = Response{
 		Text: "Need some guidance? Try `/guide help`!",
@@ -67,19 +71,25 @@ func NewService(client *guide.Client) Service {
 }
 
 func (s *service) Execute(ctx context.Context, c Command) (Response, error) {
-	switch c.Text {
-	case "":
+	cmd := resolveCommand(c.Text)
+
+	switch cmd {
+	case commandUnknown:
 		return responseNoCommand, nil
-	case "help":
+	case commandHelp:
 		return s.help(ctx, c)
+	case commandList:
+		return s.list(ctx, c)
+	case commandRandom:
+		return s.random(ctx, c)
 	default:
-		return s.sample(ctx, c)
+		return Response{}, fmt.Errorf("unhandled command '%v'", cmd)
 	}
 }
 
 func (s *service) help(ctx context.Context, c Command) (Response, error) {
 	return Response{
-		ResponseType: "ephemeral",
+		ResponseType: ResponseTypeEphemeral,
 		Text:         "sorry buddy, no help yet",
 		Attachments: []Attachment{
 			Attachment{
@@ -90,15 +100,13 @@ func (s *service) help(ctx context.Context, c Command) (Response, error) {
 	}, nil
 }
 
-func (s *service) sample(ctx context.Context, c Command) (Response, error) {
+func (s *service) list(ctx context.Context, c Command) (Response, error) {
 	team, err := s.findTeam(c.TeamID)
 	if err != nil {
 		return Response{}, err
 	}
 
-	hunt := c.Text
-	hunt = strings.ToLower(hunt)
-	hunt = strings.Replace(hunt, " ", "-", -1)
+	hunt := textToHunt(c.Text)
 
 	res, err := s.client.FindHunt(ctx, team.key, team.region, hunt)
 	if err != nil {
@@ -112,42 +120,116 @@ func (s *service) sample(ctx context.Context, c Command) (Response, error) {
 		}, nil
 	}
 
-	destinations := sample(res.Destinations, 2)
-	attachments := make([]Attachment, len(destinations))
+	destinations := sample(res.Destinations, 10)
 
-	for i := 0; i < len(destinations); i++ {
-		d := destinations[i]
+	lines := []string{
+		"Our curated list:",
+	}
 
-		a := Attachment{
-			Fallback:  d.Name,
-			Title:     d.Name,
-			TitleLink: d.Website,
-			Text:      d.Description,
-			Fields: []Field{
-				Field{
-					Title: "Address",
-					Value: fmt.Sprintf("%s, %s", d.Street, d.Suburb),
-					Short: false,
-				},
-			},
-		}
-		if len(d.BannerImages) > 0 {
-			a.ImageURL = "https://guide.app" + d.BannerImages[0]
+	for _, d := range destinations {
+		parts := []string{d.Name}
+
+		addPart := func(str string) {
+			s := strings.Trim(str, " ")
+			if s != "" {
+				parts = append(parts, s)
+			}
 		}
 
-		attachments[i] = a
+		addPart(d.Street)
+		addPart(d.Suburb)
+		addPart(d.Website)
+
+		lines = append(lines, "• "+strings.Join(parts, ", "))
 	}
 
 	return Response{
-		ResponseType: "in_channel",
-		Text:         "Check these out:",
-		Attachments:  attachments,
+		ResponseType: ResponseTypeEphemeral,
+		Text:         strings.Join(lines, "\n"),
+	}, nil
+}
+
+func (s *service) random(ctx context.Context, c Command) (Response, error) {
+	team, err := s.findTeam(c.TeamID)
+	if err != nil {
+		return Response{}, err
+	}
+
+	// TODO consider making this part of the comamnd itself
+	hunt := textToHunt(strings.TrimLeft(c.Text, "random "))
+
+	res, err := s.client.FindHunt(ctx, team.key, team.region, hunt)
+	if err != nil {
+		return Response{}, err
+	}
+
+	if len(res.Destinations) == 0 {
+		return notFoundResponse(c.Text), nil
+	}
+
+	d := sample(res.Destinations, 1)[0]
+
+	a := Attachment{
+		Fallback:  d.Name,
+		Title:     d.Name,
+		TitleLink: d.Website,
+		Text:      d.Description,
+		Fields: []Field{
+			Field{
+				Title: "Address",
+				Value: fmt.Sprintf("%s, %s", d.Street, d.Suburb), // TODO handle missing part
+				Short: false,
+			},
+		},
+	}
+	if len(d.BannerImages) > 0 {
+		a.ImageURL = "https://guide.app" + d.BannerImages[0]
+	}
+
+	return Response{
+		ResponseType: ResponseTypeEphemeral,
+		Text:         "What about...",
+		Attachments:  []Attachment{a},
 	}, nil
 }
 
 // TODO actually map this
 func (s *service) findTeam(teamID string) (team, error) {
 	return bluechilli, nil
+}
+
+const (
+	commandHelp    = "help"
+	commandList    = "list"
+	commandRandom  = "random"
+	commandUnknown = "unknown"
+)
+
+func resolveCommand(text string) string {
+	switch {
+	case text == "":
+		return commandUnknown
+	case text == "help":
+		return commandHelp
+	case strings.HasPrefix(text, "random "):
+		return commandRandom
+	default:
+		return commandList
+	}
+}
+
+func textToHunt(text string) string {
+	hunt := text
+	hunt = strings.ToLower(hunt)
+	hunt = strings.Replace(hunt, " ", "-", -1)
+	return hunt
+}
+
+func notFoundResponse(text string) Response {
+	return Response{
+		ResponseType: ResponseTypeEphemeral,
+		Text:         fmt.Sprintf("Sorry, could't find anything for '%s' :disappointed:", text),
+	}
 }
 
 func sample(ds []guide.Destination, n int) []guide.Destination {
