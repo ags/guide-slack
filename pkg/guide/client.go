@@ -40,7 +40,7 @@ type Destination struct {
 }
 
 func (c *Client) FindHunt(ctx context.Context, companyKey, region, hunt string) (Hunt, error) {
-	url := fmt.Sprintf("https://guide.app/api/v1/regions/%s/hunts/%s?type=Collection", region, hunt)
+	url := fmt.Sprintf("https://guide.app/api/v1/regions/%s/hunts/%s?type=Filter", region, hunt)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
